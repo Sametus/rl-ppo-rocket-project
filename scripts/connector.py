@@ -15,7 +15,7 @@ class Connector():
         self.sock.sendall(msg.encode("utf-8"))
 
     def readCs(self):
-        # newline gelene kadar oku
+        # newline gelene kadar oku (bufferlı)
         while "\n" not in self._buf:
             chunk = self.sock.recv(4096)
             if not chunk:
@@ -23,4 +23,10 @@ class Connector():
             self._buf += chunk.decode("utf-8", errors="replace")
 
         line, self._buf = self._buf.split("\n", 1)
-        return line.strip()
+        line = line.strip()
+
+        # BOŞ SATIR GELİRSE: yut ve tekrar oku
+        if line == "":
+            return self.readCs()
+
+        return line
