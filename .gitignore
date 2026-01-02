@@ -94,6 +94,9 @@ ehthumbs.db
 Thumbs.db
 Desktop.ini
 
+# Plastic SCM
+.plastic/
+
 # Python
 __pycache__/
 *.py[cod]
