@@ -100,8 +100,8 @@ using UnityEngine;
 
                         if (!toSend.EndsWith("\n"))
                             toSend += "\n";
-
-                        byte[] sendMsg = Encoding.UTF8.GetBytes(toSend);
+                        
+                        byte[] sendMsg = Encoding.UTF8.GetBytes(toSend + "\n");
                         stream.Write(sendMsg, 0, sendMsg.Length);
                         stream.Flush();
                     }

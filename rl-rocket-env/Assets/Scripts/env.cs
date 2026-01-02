@@ -1,68 +1,97 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
 using UnityEngine;
-using System.Globalization; // Ondalýk sayý (nokta/virgül) ayrýmý için kritik
+using System.Globalization;
 
 public class env : MonoBehaviour
 {
     [Header("Physics & Components")]
     public Rigidbody rb;
-    public Transform enginePoint; // Kuvvetin uygulanacaðý nokta
-    public Transform targetPoint; // Ýniþ yapýlacak hedef (Pist)
+    public Transform enginePoint; // Kuvvetin uygulanacaï¿½ï¿½ nokta
+    public Transform targetPoint; // ï¿½niï¿½ yapï¿½lacak hedef (Pist)
 
     [Header("Effects")]
     public ParticleSystem engineParticles;
-    private ParticleSystem.EmissionModule emissionModule;
-    private ParticleSystem.MainModule mainModule;
+    public ParticleSystem.EmissionModule emissionModule;
+    public ParticleSystem.MainModule mainModule;
 
     [Header("Thrust & Control Settings")]
     public float mainThrustPower = 150f;
-    public float rcsPower = 10f; // Eski koddaki torque gücü
+    public float rcsPower = 10f; // Eski koddaki torque gï¿½cï¿½
 
-    private Vector3 feetOffset; // Ayaklarýn taban noktasý mesafesi
+    private Vector3 feetOffset; // Ayaklarï¿½n taban noktasï¿½ mesafesi
 
     void Start()
     {
-        if (rb == null) rb = GetComponent<Rigidbody>();
+            // KÄ±sÄ±tlamalarÄ± KALDIRIYORUZ. 
+            // Roket tamamen serbest olsun, dengesini yapay zeka saÄŸlasÄ±n.
+        rb.constraints = RigidbodyConstraints.None; 
 
-        // Roket serbest kalsýn, dengeyi yapay zeka saðlasýn
+            // Otomatik Ayak Mesafesi Hesaplama (Ã–nceki konuÅŸmamÄ±zdan)
+        Collider col = GetComponent<Collider>();
+        if (col != null)
+        {
+            float halfHeight = col.bounds.extents.y / transform.localScale.y;
+            feetOffset = new Vector3(0, -halfHeight, 0);
+        }
+    }
+
+    void FixedUpdate()
+    {
+            
+    }
+
+    public void ResetEnv(float x, float y, float z, float pitch, float yaw)
+    {
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+
+        transform.position = new Vector3(x, y, z);
+            
+            // BaÅŸlangÄ±Ã§ta dÃ¼zgÃ¼n doÄŸsun ama sonra serbest kalsÄ±n
+        transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+            
+            // KÄ±sÄ±tlama yok
         rb.constraints = RigidbodyConstraints.None;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
 
-        // Partikül hazýrlýðý
         if (engineParticles != null)
         {
-            emissionModule = engineParticles.emission;
-            mainModule = engineParticles.main;
+            engineParticles.Stop();
+            engineParticles.Clear();
         }
 
-        // Otomatik Ayak Mesafesi Hesaplama (Geliþtirilmiþ)
-        // Roketin en alt noktasýný (Foot_Pad) bulmak için
-        CalculateFeetOffset();
+        Debug.Log("........ORTAM SIFIRLANDI..........");
     }
 
-    void CalculateFeetOffset()
-    {
-        // En basit haliyle roketin altýna doðru bir mesafe tanýmlýyoruz
-        // Senin tasarýmýna göre (Foot_Pad Y: -3.35 idi), yaklaþýk -3.4f diyebiliriz
-        feetOffset = new Vector3(0, -3.4f, 0);
-    }
+    // --- RL ï¿½LETï¿½ï¿½ï¿½M METODLARI ---
 
-    // --- RL ÝLETÝÞÝM METODLARI ---
-
-    // Python'dan gelen komutlarý iþler
+    // Python'dan gelen komutlarï¿½ iï¿½ler
     public void doAction(string dataString)
     {
         dataString = dataString.Replace("[", "").Replace("]", "").Replace(" ", "").Trim();
+
         if (string.IsNullOrEmpty(dataString)) return;
 
         string[] parts = dataString.Split(',');
+
         if (parts.Length < 1) return;
 
-        if (!float.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out float modeRaw)) return;
+        if (!float.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out float modeRaw))
+        {
+            return; // Mod okunamadÄ±ysa Ã§Ä±k
+        }
+
         int mode = (int)modeRaw;
 
         switch (mode)
         {
-            case 1: // RESET MODU
+            case 1: // RESET
                 if (parts.Length >= 6)
                 {
                     float x = ParseFloat(parts[1]);
@@ -70,96 +99,98 @@ public class env : MonoBehaviour
                     float z = ParseFloat(parts[3]);
                     float pitch = ParseFloat(parts[4]);
                     float yaw = ParseFloat(parts[5]);
+
                     ResetEnv(x, y, z, pitch, yaw);
                 }
                 break;
 
-            case 0: // UÇUÞ MODU
+            case 0:
                 if (parts.Length >= 5)
                 {
                     float pitch = ParseFloat(parts[1]);
                     float yaw = ParseFloat(parts[2]);
                     float thrust = ParseFloat(parts[3]);
                     float roll = ParseFloat(parts[4]);
+
                     ApplyPhysics(pitch, yaw, thrust, roll);
                 }
                 break;
         }
     }
 
-    // Roketin durumunu Python'a string olarak gönderir
-    public string getStates()
+    // Roketin durumunu Python'a string olarak gï¿½nderir
+    private float ParseFloat(string value)
     {
-        if (targetPoint == null || rb == null) return "";
-
-        // Ayaklarýn dünya koordinatýndaki yeri
-        Vector3 globalFeetPos = transform.TransformPoint(feetOffset);
-
-        // Hedefe olan uzaklýk (Mesafe hatasý / Error)
-        float dx = targetPoint.position.x - globalFeetPos.x;
-        float dy = globalFeetPos.y - targetPoint.position.y; // Yükseklik
-        float dz = targetPoint.position.z - globalFeetPos.z;
-
-        // Hýzlar (Unity 6: linearVelocity ve angularVelocity)
-        Vector3 vel = rb.linearVelocity;
-        Vector3 angVel = rb.angularVelocity;
-        Quaternion rot = transform.rotation;
-
-        // Verileri Python'un beklediði sýrayla birleþtir
-        return string.Format(CultureInfo.InvariantCulture,
-            "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12}",
-            dx, dy, dz, vel.x, vel.y, vel.z, angVel.x, angVel.y, angVel.z, rot.x, rot.y, rot.z, rot.w);
+        if (float.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out float result))
+        {
+            return result;
+        }
+        return 0.0f;
     }
-
-    // --- FÝZÝK VE KONTROL ---
 
     private void ApplyPhysics(float pitch, float yaw, float thrust, float roll)
     {
         float motorGucu = Mathf.Clamp01(thrust);
+        rb.AddRelativeForce(Vector3.up * motorGucu * mainThrustPower);
 
-        // Ana Ýtki (Thrust) - EnginePoint üzerinden
-        rb.AddForceAtPosition(transform.up * motorGucu * mainThrustPower, enginePoint.position, ForceMode.Force);
-
-        // Tork (Yönlendirme) - Eski kodundaki eksen mantýðýyla
+        // EKSENLERÄ° DOÄžRU OTURTMA:
+        // transform.right   (X) -> PITCH (Ã–ne arkaya yatma)
+        // transform.forward (Z) -> YAW (SaÄŸa sola yatma)
+        // transform.up      (Y) -> ROLL (Kendi ekseninde dÃ¶nme / Spin)
+        
         Vector3 pitchTork = transform.right * pitch * rcsPower;
-        Vector3 yawTork = transform.forward * yaw * rcsPower;
-        Vector3 rollTork = transform.up * roll * (rcsPower * 0.5f);
+        Vector3 yawTork   = transform.forward * yaw * rcsPower;
+        Vector3 rollTork  = transform.up * roll * (rcsPower * 0.1f); // ArtÄ±k roll Ã§alÄ±ÅŸÄ±yor
 
-        rb.AddTorque(pitchTork + yawTork + rollTork, ForceMode.Force);
+        rb.AddTorque(pitchTork + yawTork + rollTork);
 
-        // Görsel Efekt Güncelleme
-        UpdateEffects(motorGucu);
-    }
-
-    public void ResetEnv(float x, float y, float z, float pitch, float yaw)
-    {
-        rb.linearVelocity = Vector3.zero;
-        rb.angularVelocity = Vector3.zero;
-        transform.position = new Vector3(x, y, z);
-        transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
-
-        if (engineParticles != null) { engineParticles.Stop(); engineParticles.Clear(); }
-        Debug.Log("Environment Reseted");
-    }
-
-    private void UpdateEffects(float thrust)
-    {
-        if (engineParticles == null) return;
-        if (thrust > 0.01f)
+        // Efekt KodlarÄ± Aynen Kalabilir
+        if (engineParticles != null)
         {
-            emissionModule.rateOverTime = thrust * 200f;
-            mainModule.startSpeed = 10f + (thrust * 20f);
-            if (!engineParticles.isPlaying) engineParticles.Play();
-        }
-        else
-        {
-            emissionModule.rateOverTime = 0f;
-            if (engineParticles.isPlaying) engineParticles.Stop();
+            var emission = engineParticles.emission;
+            if (motorGucu > 0.01f)
+            {
+                if (!engineParticles.isPlaying) engineParticles.Play();
+                emission.rateOverTime = motorGucu * 500f;
+            }
+            else
+            {
+                emission.rateOverTime = 0f;
+            }
         }
     }
 
-    private float ParseFloat(string value)
+    // connector.cs ilet
+    public string getStates()
     {
-        return float.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out float res) ? res : 0f;
+        if (targetPoint == null || rb == null) return "";
+        Vector3 globalFeetPos = transform.TransformPoint(feetOffset);
+
+        float dx = targetPoint.position.x - globalFeetPos.x;
+        float dz = targetPoint.position.z - globalFeetPos.z;
+        float dy = globalFeetPos.y - targetPoint.position.y;
+        Vector3 velocity = rb.linearVelocity;
+        Vector3 angularVel = rb.angularVelocity;
+
+        Quaternion rotation = transform.rotation;
+
+        // Python beklenen sÄ±ra: dx, dy, dz, vx, vy, vz, wx, wy, wz, qx, qy, qz, qw
+        // InvariantCulture kullanarak ondalÄ±k ayÄ±rÄ±cÄ±yÄ± nokta (.) yapÄ±yoruz
+        string states =
+            dx.ToString(CultureInfo.InvariantCulture) + "," +
+            dy.ToString(CultureInfo.InvariantCulture) + "," +
+            dz.ToString(CultureInfo.InvariantCulture) + "," +
+            velocity.x.ToString(CultureInfo.InvariantCulture) + "," +
+            velocity.y.ToString(CultureInfo.InvariantCulture) + "," +
+            velocity.z.ToString(CultureInfo.InvariantCulture) + "," +
+            angularVel.x.ToString(CultureInfo.InvariantCulture) + "," +
+            angularVel.y.ToString(CultureInfo.InvariantCulture) + "," +
+            angularVel.z.ToString(CultureInfo.InvariantCulture) + "," +
+            rotation.x.ToString(CultureInfo.InvariantCulture) + "," +
+            rotation.y.ToString(CultureInfo.InvariantCulture) + "," +
+            rotation.z.ToString(CultureInfo.InvariantCulture) + "," +
+            rotation.w.ToString(CultureInfo.InvariantCulture);
+
+        return  states;
     }
 }

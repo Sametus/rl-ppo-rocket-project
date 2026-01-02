@@ -33,18 +33,18 @@ class PPOAgent:
     def __init__(self):
         self.state_size = 13
         self.action_size = 4  # [pitch, yaw, thrust, roll] - 4 continuous action
-        self.lr = 3e-4
+        self.lr = 1e-4
         self.gamma = 0.99
         self.gae_lambda = 0.95
-        self.clip_eps=0.2
+        self.clip_eps=0.1
         self.vf_coef=0.5
         self.ent_coef = 0.01
-        self.epochs = 10
+        self.epochs = 4
         self.batch_size = 256
         self.max_grad_norm = 0.5
 
         self.model = self.build_model()
-        self.log_std = tf.Variable(-0.5*tf.ones((self.action_size), dtype=tf.float32),
+        self.log_std = tf.Variable(-1.0*tf.ones((self.action_size), dtype=tf.float32),
                                    trainable=True,
                                    name="log_std",)
         self.opt = Adam(learning_rate = self.lr)
@@ -173,3 +173,81 @@ class PPOAgent:
         for k in logs:
             logs[k] /= max(1, steps)
         return logs
+
+    
+
+  
+        
+
+
+########################################
+# class Agent():
+
+#     def __init__(self):
+#         self.state_size = 13
+#         self.action_size = 3
+
+#         self.gamma = 0.95
+#         self.learning_rate = 0.001
+
+#         self.epsilon = 1.0
+#         self.epsilon_decay = 0.995
+#         self.epsilon_min = 0.01
+
+#         self.memory = deque(maxlen=10000)
+#         self.model = self.build_model()
+
+#     def build_model(self):
+#         model = Sequential([
+#         Input(shape=(self.state_size,)),
+#         Dense(256, activation='relu'),
+#         Dense(256, activation='relu'),
+#         Dense(3, activation='tanh')  # => 3 continuous output
+#         ])
+#         optimizer = Adam(learning_rate = self.learning_rate)
+#         model.compile(optimizer, loss="mse")
+
+#         return model
+
+#     def remember(self,state,action,reward,next_state,done):
+#         self.memory.append((state,action,reward,next_state,done))
+
+#     def act(self, state):
+#         s = np.asarray(state, dtype=np.float32).reshape(1, -1)
+
+#         if np.random.rand() <= self.epsilon:
+#             # rastgele continuous aksiyon (örnek: [-1,1] arası)
+#             return np.random.uniform(-1.0, 1.0, size=(3,))
+
+#         a = self.model.predict(s, verbose=0)[0]   # shape: (3,)
+#         return a  # örn [0.12, -0.55, 0.83]
+
+#     def replay(self, batch_size=64):
+#             "vectorized replay method"
+#             if len(self.memory) < batch_size:
+#                 return
+
+#             minibatch = random.sample(self.memory, batch_size)
+#             minibatch = np.array(minibatch, dtype=object)
+
+#             not_done_indices = np.where(minibatch[:, 4] == False)[0]
+#             y = np.copy(minibatch[:, 2]).astype(np.float32)
+
+#             if not_done_indices.size > 0:
+#                 ns = np.vstack(minibatch[:, 3]).astype(np.float32)
+#                 predict_sprime = self.model.predict(ns, verbose=0)         
+#                 predict_sprime_target = predict_sprime                     
+#                 best_next = np.argmax(predict_sprime[not_done_indices, :], axis=1)
+#                 y[not_done_indices] += self.gamma * predict_sprime_target[not_done_indices, best_next]
+
+#             actions = np.array(minibatch[:, 1], dtype=int)
+#             X = np.vstack(minibatch[:, 0]).astype(np.float32)
+#             y_target = self.model.predict(X, verbose=0)
+#             y_target[np.arange(batch_size), actions] = y
+
+#             self.model.fit(X, y_target, epochs=1, verbose=0, batch_size=batch_size)
+
+#     def adaptiveEGreedy(self):
+#         if self.epsilon > self.epsilon_min:
+#             self.epsilon *= self.epsilon_decay
+
